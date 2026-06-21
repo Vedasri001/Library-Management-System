@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — LibraryOS{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="stats-grid" id="statsGrid">
+  <div class="stat-card">
+    <div class="stat-icon books-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+    </div>
+    <div class="stat-info">
+      <div class="stat-label">Total Books</div>
+      <div class="stat-value" id="totalBooks">—</div>
+      <div class="stat-sub" id="totalCopies">— copies total</div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon avail-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+    </div>
+    <div class="stat-info">
+      <div class="stat-label">Available Copies</div>
+      <div class="stat-value" id="availCopies">—</div>
+      <div class="stat-sub" id="issuedCopies">— currently issued</div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon users-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+    </div>
+    <div class="stat-info">
+      <div class="stat-label">Members</div>
+      <div class="stat-value" id="totalUsers">—</div>
+      <div class="stat-sub" id="activeUsers">— active</div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon txn-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/></svg>
+    </div>
+    <div class="stat-info">
+      <div class="stat-label">Active Transactions</div>
+      <div class="stat-value" id="activeTxns">—</div>
+      <div class="stat-sub overdue" id="overdueTxns">— overdue</div>
+    </div>
+  </div>
+</div>
+
+<div class="dashboard-bottom">
+  <div class="panel">
+    <div class="panel-header">
+      <h2 class="panel-title">Recent Transactions</h2>
+      <a href="/transactions" class="panel-link">View all →</a>
+    </div>
+    <div id="recentTransactions" class="recent-list">
+      <div class="loading-row">Loading…</div>
+    </div>
+  </div>
+
+  <div class="panel quick-actions-panel">
+    <div class="panel-header">
+      <h2 class="panel-title">Quick Actions</h2>
+    </div>
+    <div class="quick-actions">
+      <a href="/books" class="qa-card">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <span>Add New Book</span>
+      </a>
+      <a href="/users" class="qa-card">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+        <span>Register Member</span>
+      </a>
+      <a href="/transactions" class="qa-card">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+        <span>Issue a Book</span>
+      </a>
+      <a href="/transactions?status=Overdue" class="qa-card qa-warn">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>View Overdue</span>
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadDashboard() {
+  const stats = await api('/api/stats');
+  document.getElementById('totalBooks').textContent = stats.total_books;
+  document.getElementById('totalCopies').textContent = stats.total_copies + ' copies total';
+  document.getElementById('availCopies').textContent = stats.available_copies;
+  document.getElementById('issuedCopies').textContent = stats.issued_copies + ' currently issued';
+  document.getElementById('totalUsers').textContent = stats.total_users;
+  document.getElementById('activeUsers').textContent = stats.active_users + ' active';
+  document.getElementById('activeTxns').textContent = stats.active_transactions;
+  document.getElementById('overdueTxns').textContent = stats.overdue_transactions + ' overdue';
+
+  const txns = await api('/api/recent_transactions');
+  const el = document.getElementById('recentTransactions');
+  if (!txns.length) { el.innerHTML = '<div class="empty-row">No transactions yet.</div>'; return; }
+  el.innerHTML = txns.map(t => `
+    <div class="recent-row">
+      <div class="recent-book">${t.book_title}</div>
+      <div class="recent-user">${t.user_name}</div>
+      <span class="badge badge-${t.status.toLowerCase()}">${t.status}</span>
+      <div class="recent-date">${t.issue_date}</div>
+    </div>
+  `).join('');
+}
+loadDashboard();
+</script>
+{% endblock %}

@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}Books — LibraryOS{% endblock %}
+{% block page_title %}Books{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-primary" onclick="openAddBookModal()">+ Add Book</button>
+{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <div class="search-wrap">
+    <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input class="search-input" id="searchBooks" type="text" placeholder="Search by title, author, or ISBN…" oninput="loadBooks()">
+  </div>
+  <select class="filter-select" id="genreFilter" onchange="loadBooks()">
+    <option value="">All Genres</option>
+    <option>Classic Fiction</option>
+    <option>Dystopian</option>
+    <option>Fantasy</option>
+    <option>Romance</option>
+    <option>Non-Fiction</option>
+    <option>Philosophy</option>
+    <option>Science</option>
+    <option>History</option>
+    <option>Technology</option>
+  </select>
+  <label class="toggle-label">
+    <input type="checkbox" id="availOnly" onchange="loadBooks()"> Available only
+  </label>
+</div>
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Author</th>
+        <th>Genre</th>
+        <th>ISBN</th>
+        <th>Copies</th>
+        <th>Available</th>
+        <th>Added</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="booksTableBody">
+      <tr><td colspan="8" class="loading-row">Loading…</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allBooks = [];
+
+async function loadBooks() {
+  const q = document.getElementById('searchBooks').value;
+  const genre = document.getElementById('genreFilter').value;
+  const avail = document.getElementById('availOnly').checked;
+  let url = `/api/books?q=${encodeURIComponent(q)}&genre=${encodeURIComponent(genre)}`;
+  if (avail) url += '&available=true';
+  allBooks = await api(url);
+  renderBooks();
+}
+
+function renderBooks() {
+  const tbody = document.getElementById('booksTableBody');
+  if (!allBooks.length) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-row">No books found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = allBooks.map(b => {
+    const availClass = b.available_copies === 0 ? 'avail-none' : b.available_copies < 2 ? 'avail-low' : 'avail-ok';
+    return `<tr>
+      <td><span class="book-title">${b.title}</span></td>
+      <td>${b.author}</td>
+      <td><span class="genre-chip">${b.genre}</span></td>
+      <td class="mono">${b.isbn || '—'}</td>
+      <td class="center">${b.total_copies}</td>
+      <td class="center"><span class="avail-badge ${availClass}">${b.available_copies}</span></td>
+      <td>${b.added_date}</td>
+      <td>
+        <div class="action-btns">
+          <button class="btn-icon edit" onclick="openEditBookModal(${b.id})" title="Edit">✎</button>
+          <button class="btn-icon del" onclick="deleteBook(${b.id})" title="Delete">✕</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openAddBookModal() {
+  openModal('Add New Book', `
+    <div class="form-grid">
+      <div class="form-group full"><label>Title *</label><input id="fTitle" class="form-input" placeholder="Book title"></div>
+      <div class="form-group full"><label>Author *</label><input id="fAuthor" class="form-input" placeholder="Author name"></div>
+      <div class="form-group">
+        <label>Genre</label>
+        <select id="fGenre" class="form-input">
+          <option>Classic Fiction</option><option>Dystopian</option><option>Fantasy</option>
+          <option>Romance</option><option>Non-Fiction</option><option>Philosophy</option>
+          <option>Science</option><option>History</option><option>Technology</option><option>General</option>
+        </select>
+      </div>
+      <div class="form-group"><label>ISBN</label><input id="fISBN" class="form-input" placeholder="978-xxxxxxxxxx"></div>
+      <div class="form-group"><label>Number of Copies</label><input id="fCopies" class="form-input" type="number" value="1" min="1"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddBook()">Add Book</button>
+    </div>
+  `);
+}
+
+async function submitAddBook() {
+  const title = document.getElementById('fTitle').value.trim();
+  const author = document.getElementById('fAuthor').value.trim();
+  if (!title || !author) { showToast('Title and Author are required', 'error'); return; }
+  await api('/api/books', 'POST', {
+    title, author,
+    genre: document.getElementById('fGenre').value,
+    isbn: document.getElementById('fISBN').value,
+    total_copies: document.getElementById('fCopies').value
+  });
+  closeModal(); showToast('Book added successfully!'); loadBooks();
+}
+
+function openEditBookModal(id) {
+  const b = allBooks.find(x => x.id === id);
+  if (!b) return;
+  openModal('Edit Book', `
+    <div class="form-grid">
+      <div class="form-group full"><label>Title *</label><input id="eTitle" class="form-input" value="${b.title}"></div>
+      <div class="form-group full"><label>Author *</label><input id="eAuthor" class="form-input" value="${b.author}"></div>
+      <div class="form-group">
+        <label>Genre</label>
+        <select id="eGenre" class="form-input">
+          ${['Classic Fiction','Dystopian','Fantasy','Romance','Non-Fiction','Philosophy','Science','History','Technology','General']
+            .map(g => `<option ${g===b.genre?'selected':''}>${g}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group"><label>ISBN</label><input id="eISBN" class="form-input" value="${b.isbn||''}"></div>
+      <div class="form-group"><label>Total Copies</label><input id="eCopies" class="form-input" type="number" value="${b.total_copies}" min="1"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEditBook(${id})">Save Changes</button>
+    </div>
+  `);
+}
+
+async function submitEditBook(id) {
+  const title = document.getElementById('eTitle').value.trim();
+  const author = document.getElementById('eAuthor').value.trim();
+  if (!title || !author) { showToast('Title and Author are required', 'error'); return; }
+  await api(`/api/books/${id}`, 'PUT', {
+    title, author,
+    genre: document.getElementById('eGenre').value,
+    isbn: document.getElementById('eISBN').value,
+    total_copies: document.getElementById('eCopies').value
+  });
+  closeModal(); showToast('Book updated!'); loadBooks();
+}
+
+async function deleteBook(id) {
+  const b = allBooks.find(x => x.id === id);
+  if (!confirm(`Delete "${b.title}"? This cannot be undone.`)) return;
+  const res = await apiRaw(`/api/books/${id}`, 'DELETE');
+  if (res.ok) { showToast('Book deleted.'); loadBooks(); }
+  else { const d = await res.json(); showToast(d.error, 'error'); }
+}
+
+loadBooks();
+</script>
+{% endblock %}

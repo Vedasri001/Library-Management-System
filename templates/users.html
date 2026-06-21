@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% block title %}Members — LibraryOS{% endblock %}
+{% block page_title %}Members{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-primary" onclick="openAddUserModal()">+ Register Member</button>
+{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <div class="search-wrap">
+    <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <input class="search-input" id="searchUsers" type="text" placeholder="Search by name or email…" oninput="loadUsers()">
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Phone</th>
+        <th>Type</th>
+        <th>Joined</th>
+        <th>Status</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="usersTableBody">
+      <tr><td colspan="7" class="loading-row">Loading…</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allUsers = [];
+
+async function loadUsers() {
+  const q = document.getElementById('searchUsers').value;
+  allUsers = await api(`/api/users?q=${encodeURIComponent(q)}`);
+  renderUsers();
+}
+
+function renderUsers() {
+  const tbody = document.getElementById('usersTableBody');
+  if (!allUsers.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-row">No members found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = allUsers.map(u => `<tr>
+    <td><span class="user-name">${u.name}</span></td>
+    <td>${u.email}</td>
+    <td class="mono">${u.phone || '—'}</td>
+    <td><span class="genre-chip">${u.member_type}</span></td>
+    <td>${u.join_date}</td>
+    <td><span class="badge badge-${u.status.toLowerCase()}">${u.status}</span></td>
+    <td>
+      <div class="action-btns">
+        <button class="btn-icon info" onclick="viewUserHistory(${u.id})" title="History">☰</button>
+        <button class="btn-icon edit" onclick="openEditUserModal(${u.id})" title="Edit">✎</button>
+        <button class="btn-icon del" onclick="deleteUser(${u.id})" title="Delete">✕</button>
+      </div>
+    </td>
+  </tr>`).join('');
+}
+
+function openAddUserModal() {
+  openModal('Register New Member', `
+    <div class="form-grid">
+      <div class="form-group full"><label>Full Name *</label><input id="fName" class="form-input" placeholder="Full name"></div>
+      <div class="form-group full"><label>Email *</label><input id="fEmail" class="form-input" type="email" placeholder="email@example.com"></div>
+      <div class="form-group"><label>Phone</label><input id="fPhone" class="form-input" placeholder="10-digit number"></div>
+      <div class="form-group">
+        <label>Member Type</label>
+        <select id="fType" class="form-input">
+          <option>Student</option><option>Faculty</option><option>Staff</option><option>Guest</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddUser()">Register</button>
+    </div>
+  `);
+}
+
+async function submitAddUser() {
+  const name = document.getElementById('fName').value.trim();
+  const email = document.getElementById('fEmail').value.trim();
+  if (!name || !email) { showToast('Name and Email are required', 'error'); return; }
+  await api('/api/users', 'POST', {
+    name, email,
+    phone: document.getElementById('fPhone').value,
+    member_type: document.getElementById('fType').value
+  });
+  closeModal(); showToast('Member registered!'); loadUsers();
+}
+
+function openEditUserModal(id) {
+  const u = allUsers.find(x => x.id === id);
+  openModal('Edit Member', `
+    <div class="form-grid">
+      <div class="form-group full"><label>Full Name *</label><input id="eName" class="form-input" value="${u.name}"></div>
+      <div class="form-group full"><label>Email *</label><input id="eEmail" class="form-input" value="${u.email}"></div>
+      <div class="form-group"><label>Phone</label><input id="ePhone" class="form-input" value="${u.phone||''}"></div>
+      <div class="form-group">
+        <label>Member Type</label>
+        <select id="eType" class="form-input">
+          ${['Student','Faculty','Staff','Guest'].map(t=>`<option ${t===u.member_type?'selected':''}>${t}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Status</label>
+        <select id="eStatus" class="form-input">
+          <option ${u.status==='Active'?'selected':''}>Active</option>
+          <option ${u.status==='Inactive'?'selected':''}>Inactive</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEditUser(${id})">Save Changes</button>
+    </div>
+  `);
+}
+
+async function submitEditUser(id) {
+  const name = document.getElementById('eName').value.trim();
+  const email = document.getElementById('eEmail').value.trim();
+  if (!name || !email) { showToast('Name and Email are required', 'error'); return; }
+  await api(`/api/users/${id}`, 'PUT', {
+    name, email,
+    phone: document.getElementById('ePhone').value,
+    member_type: document.getElementById('eType').value,
+    status: document.getElementById('eStatus').value
+  });
+  closeModal(); showToast('Member updated!'); loadUsers();
+}
+
+async function deleteUser(id) {
+  const u = allUsers.find(x => x.id === id);
+  if (!confirm(`Remove "${u.name}" from the system?`)) return;
+  const res = await apiRaw(`/api/users/${id}`, 'DELETE');
+  if (res.ok) { showToast('Member removed.'); loadUsers(); }
+  else { const d = await res.json(); showToast(d.error, 'error'); }
+}
+
+async function viewUserHistory(id) {
+  const u = allUsers.find(x => x.id === id);
+  const txns = await api(`/api/users/${id}/transactions`);
+  const rows = txns.length
+    ? txns.map(t => `<div class="history-row">
+        <span class="book-title">${t.book_title}</span>
+        <span class="badge badge-${t.status.toLowerCase()}">${t.status}</span>
+        <span class="mono" style="font-size:.8rem">${t.issue_date} → ${t.return_date||'pending'}</span>
+        ${t.fine ? `<span style="color:var(--warn);font-size:.8rem">Fine: ₹${t.fine}</span>` : ''}
+      </div>`).join('')
+    : '<p style="color:var(--text-muted);padding:1rem 0">No transaction history.</p>';
+  openModal(`${u.name} — Transaction History`, rows + `<div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">Close</button></div>`);
+}
+
+loadUsers();
+</script>
+{% endblock %}

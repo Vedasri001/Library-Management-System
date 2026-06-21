@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Transactions — LibraryOS{% endblock %}
+{% block page_title %}Transactions{% endblock %}
+
+{% block topbar_actions %}
+<button class="btn btn-primary" onclick="openIssueModal()">+ Issue Book</button>
+{% endblock %}
+
+{% block content %}
+<div class="toolbar">
+  <div class="filter-tabs" id="statusTabs">
+    <button class="filter-tab active" onclick="filterStatus('', this)">All</button>
+    <button class="filter-tab" onclick="filterStatus('Issued', this)">Issued</button>
+    <button class="filter-tab" onclick="filterStatus('Overdue', this)">Overdue</button>
+    <button class="filter-tab" onclick="filterStatus('Returned', this)">Returned</button>
+  </div>
+</div>
+
+<div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Book</th>
+        <th>Member</th>
+        <th>Issue Date</th>
+        <th>Due Date</th>
+        <th>Return Date</th>
+        <th>Status</th>
+        <th>Fine</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="txnsTableBody">
+      <tr><td colspan="9" class="loading-row">Loading…</td></tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let allTxns = [];
+let currentStatus = '';
+
+async function loadTransactions() {
+  allTxns = await api(`/api/transactions?status=${currentStatus}`);
+  renderTxns();
+}
+
+function filterStatus(status, btn) {
+  currentStatus = status;
+  document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadTransactions();
+}
+
+function renderTxns() {
+  const tbody = document.getElementById('txnsTableBody');
+  if (!allTxns.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-row">No transactions found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = allTxns.map(t => `<tr>
+    <td class="mono" style="color:var(--text-muted);font-size:.8rem">#${t.id}</td>
+    <td><span class="book-title">${t.book_title}</span></td>
+    <td>${t.user_name}</td>
+    <td>${t.issue_date}</td>
+    <td class="${t.status==='Overdue'?'overdue-date':''}">${t.due_date}</td>
+    <td>${t.return_date || '—'}</td>
+    <td><span class="badge badge-${t.status.toLowerCase()}">${t.status}</span></td>
+    <td>${t.fine ? `<span style="color:var(--warn);font-weight:600">₹${t.fine}</span>` : '—'}</td>
+    <td>
+      ${t.status !== 'Returned'
+        ? `<button class="btn btn-sm btn-success" onclick="returnBook(${t.id})">Return</button>`
+        : '<span style="color:var(--text-muted);font-size:.8rem">Completed</span>'
+      }
+    </td>
+  </tr>`).join('');
+}
+
+let booksList = [], usersList = [];
+
+async function openIssueModal() {
+  [booksList, usersList] = await Promise.all([api('/api/books?available=true'), api('/api/users')]);
+  openModal('Issue a Book', `
+    <div class="form-grid">
+      <div class="form-group full">
+        <label>Select Book *</label>
+        <select id="iBook" class="form-input">
+          <option value="">— Choose a book —</option>
+          ${booksList.map(b => `<option value="${b.id}">${b.title} — ${b.author} (${b.available_copies} avail.)</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group full">
+        <label>Select Member *</label>
+        <select id="iUser" class="form-input">
+          <option value="">— Choose a member —</option>
+          ${usersList.map(u => `<option value="${u.id}">${u.name} (${u.member_type})</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group full info-box">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        Due date is automatically set to 14 days from today. Late returns incur a fine of ₹5/day.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitIssue()">Issue Book</button>
+    </div>
+  `);
+}
+
+async function submitIssue() {
+  const book_id = document.getElementById('iBook').value;
+  const user_id = document.getElementById('iUser').value;
+  if (!book_id || !user_id) { showToast('Please select both book and member', 'error'); return; }
+  const res = await apiRaw('/api/transactions/issue', 'POST', { book_id, user_id });
+  if (res.ok) {
+    closeModal(); showToast('Book issued successfully!'); loadTransactions();
+  } else {
+    const d = await res.json(); showToast(d.error, 'error');
+  }
+}
+
+async function returnBook(id) {
+  const t = allTxns.find(x => x.id === id);
+  if (!confirm(`Return "${t.book_title}" for ${t.user_name}?`)) return;
+  const res = await apiRaw(`/api/transactions/${id}/return`, 'POST');
+  const data = await res.json();
+  if (res.ok) {
+    const msg = data.fine > 0
+      ? `Book returned. Fine collected: ₹${data.fine}`
+      : 'Book returned successfully!';
+    showToast(msg, data.fine > 0 ? 'warn' : 'success');
+    loadTransactions();
+  } else {
+    showToast(data.error, 'error');
+  }
+}
+
+// Check for ?status= param in URL
+const urlParams = new URLSearchParams(window.location.search);
+const urlStatus = urlParams.get('status');
+if (urlStatus) {
+  currentStatus = urlStatus;
+  document.querySelectorAll('.filter-tab').forEach(b => {
+    if (b.textContent === urlStatus) b.classList.add('active');
+    else b.classList.remove('active');
+  });
+}
+
+loadTransactions();
+</script>
+{% endblock %}
